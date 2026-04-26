@@ -109,7 +109,6 @@ async function createJob() {
 
   loadJobs();
 }
-
 async function loadJobs() {
   try {
     const res = await fetch("/api/jobs/list.php", {
@@ -124,13 +123,28 @@ async function loadJobs() {
     box.innerHTML = "";
 
     data.jobs.forEach((j) => {
+      const swapImageUrl = `/api/image_proxy.php?file=tmp_uploads/user_${j.user_id}/${j.swap_image}`;
+
       box.innerHTML += `
-                <div class="border p-2 mb-2">
+        <div class="border p-2 mb-2">
+
+            <div class="d-flex align-items-center gap-3">
+
+                <img 
+                    src="${swapImageUrl}" 
+                    style="width:60px;height:60px;object-fit:cover;border-radius:6px;"
+                >
+
+                <div>
                     <b>Job #${j.id}</b><br>
                     Status: ${j.status}<br>
                     Progress: ${j.progress}%
                 </div>
-            `;
+
+            </div>
+
+        </div>
+      `;
     });
   } catch (err) {
     console.error("Failed to load jobs:", err);

@@ -31,9 +31,14 @@ $user_id = $user['id'];
 // =====================
 $sql = "
 SELECT 
-    j.*,
-    COUNT(ji.id) as total_images,
-    SUM(CASE WHEN ji.status='completed' THEN 1 ELSE 0 END) as done_images
+    j.id,
+    j.user_id,
+    j.swap_image,
+    j.status,
+    j.progress,
+    j.created_at,
+    COUNT(ji.id) AS total_images,
+    SUM(CASE WHEN ji.status='completed' THEN 1 ELSE 0 END) AS done_images
 FROM jobs j
 LEFT JOIN job_images ji ON j.id = ji.job_id
 WHERE j.user_id = ?
@@ -52,11 +57,13 @@ $jobs = [];
 while ($row = $result->fetch_assoc()) {
 
     $total = $row['total_images'] ?? 0;
-    $done = $row['done_images'] ?? 0;
+    $done  = $row['done_images'] ?? 0;
 
     $row['progress'] = $total > 0 ? intval(($done / $total) * 100) : 0;
 
     $jobs[] = $row;
 }
 
-echo json_encode(["jobs" => $jobs]);
+echo json_encode([
+    "jobs" => $jobs
+]);

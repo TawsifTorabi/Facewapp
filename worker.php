@@ -7,76 +7,86 @@ echo "Worker started v2...\n";
 while (true) {
 
     // =========================
-    // 1. ATOMIC CLAIM (SAFE)
+    // 1. CLAIM NEXT JOB IMAGE (SAFE + USER AWARE)
     // =========================
     $conn->begin_transaction();
 
-    // Claim ONE job_image safely
-    $conn->query("
-        UPDATE job_images
-        SET status = 'processing'
-        WHERE id = (
-            SELECT id FROM (
-                SELECT id 
-                FROM job_images
-                WHERE status = 'queued'
-                ORDER BY id ASC
-                LIMIT 1
-            ) AS tmp
-        )
+    $taskRes = $conn->query("
+        SELECT 
+            ji.id,
+            ji.job_id,
+            ji.input_image,
+            j.swap_image,
+            j.user_id
+        FROM job_images ji
+        JOIN jobs j ON j.id = ji.job_id
+        WHERE ji.status = 'queued'
+        ORDER BY ji.id ASC
+        LIMIT 1
+        FOR UPDATE
     ");
 
-    // If nothing was claimed
-    if ($conn->affected_rows === 0) {
+    $task = $taskRes ? $taskRes->fetch_assoc() : null;
+
+    if (!$task) {
         $conn->commit();
         echo "No jobs... sleeping\n";
         sleep(2);
         continue;
     }
 
-    // Fetch the claimed row
-    $taskRes = $conn->query("
-        SELECT id, job_id, input_image
-        FROM job_images
-        WHERE status = 'processing'
-        ORDER BY id DESC
-        LIMIT 1
-    ");
+    $image_id   = $task['id'];
+    $job_id     = $task['job_id'];
+    $user_id    = $task['user_id'];
+    $swap_image = $task['swap_image'];
+    $input_image = $task['input_image'];
 
-    $task = $taskRes->fetch_assoc();
+    // mark as processing
+    $conn->query("
+        UPDATE job_images
+        SET status = 'processing'
+        WHERE id = $image_id
+    ");
 
     $conn->commit();
 
-    $image_id = $task['id'];
-    $job_id = $task['job_id'];
-    $input_image = $task['input_image'];
-
-    echo "Processing image #$image_id (Job #$job_id)\n";
+    echo "Processing image #$image_id (Job #$job_id, User #$user_id)\n";
 
     // =========================
-    // 2. PROCESS IMAGE
+    // 2. BUILD FILE PATHS (USER-SPECIFIC)
     // =========================
+    $basePath = __DIR__ . "/storage/tmp_uploads/user_$user_id/";
+
+    $swapPath   = $basePath . $swap_image;
+    $targetPath = $basePath . $input_image;
+
     try {
 
-        // Get swap image
-        $jobRes = $conn->query("
-            SELECT swap_image 
-            FROM jobs 
-            WHERE id = $job_id
-        ");
+        // =========================
+        // 3. VALIDATE FILES
+        // =========================
+        if (!file_exists($swapPath)) {
+            throw new Exception("Swap image not found: $swapPath");
+        }
 
-        $job = $jobRes->fetch_assoc();
-        $swap_image = $job['swap_image'];
+        if (!file_exists($targetPath)) {
+            throw new Exception("Target image not found: $targetPath");
+        }
 
-        // Call model
-        $output_file = callFaceSwapAPI($swap_image, $input_image);
+        // =========================
+        // 4. CALL MODEL API
+        // =========================
+        $output_file = callFaceSwapAPI($swapPath, $targetPath);
 
-        // Save success
+        // =========================
+        // 5. SAVE RESULT
+        // =========================
         $stmt = $conn->prepare("
             UPDATE job_images 
             SET status='completed', output_image=?
             WHERE id=?
         ");
+
         $stmt->bind_param("si", $output_file, $image_id);
         $stmt->execute();
 
@@ -98,18 +108,18 @@ while (true) {
     }
 
     // =========================
-    // 3. UPDATE JOB PROGRESS
+    // 6. UPDATE JOB PROGRESS
     // =========================
     updateJobProgress($conn, $job_id);
 }
 
-function callFaceSwapAPI($swap, $target)
+
+// =====================================================
+// CALL MODEL API
+// =====================================================
+function callFaceSwapAPI($swapPath, $targetPath)
 {
-
     $api_url = "http://face-swap-model-v2:5000/predictions";
-
-    $swapPath = __DIR__ . "/storage/uploads/" . $swap;
-    $targetPath = __DIR__ . "/storage/uploads/" . $target;
 
     $swapBase64 = base64_encode(file_get_contents($swapPath));
     $targetBase64 = base64_encode(file_get_contents($targetPath));
@@ -164,29 +174,31 @@ function callFaceSwapAPI($swap, $target)
 }
 
 
+// =====================================================
+// UPDATE JOB PROGRESS
+// =====================================================
 function updateJobProgress($conn, $job_id)
 {
-
     $res = $conn->query("
         SELECT 
             COUNT(*) as total,
             SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) as done
         FROM job_images
-        WHERE job_id=$job_id
+        WHERE job_id = $job_id
     ");
 
     $row = $res->fetch_assoc();
 
-    $total = $row['total'];
-    $done = $row['done'];
+    $total = $row['total'] ?? 0;
+    $done  = $row['done'] ?? 0;
 
     $progress = $total > 0 ? intval(($done / $total) * 100) : 0;
 
-    $status = ($done == $total) ? 'completed' : 'processing';
+    $status = ($done >= $total) ? 'completed' : 'processing';
 
     $conn->query("
         UPDATE jobs 
-        SET progress=$progress, status='$status'
-        WHERE id=$job_id
+        SET progress = $progress, status = '$status'
+        WHERE id = $job_id
     ");
 }
