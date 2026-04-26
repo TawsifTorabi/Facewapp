@@ -1,0 +1,52 @@
+version: "3.8"
+
+services:
+
+  # =========================
+  # FACEWAPP WEB APP
+  # =========================
+  facewapp-web:
+    container_name: facewapp-web-v2
+    build: .
+    ports:
+      - "8081:80"
+    volumes:
+      - /mnt/satahdd1/disk1/facewapp:/var/www/html
+    networks:
+      - db-network
+    restart: unless-stopped
+    cpus: 1.0
+    mem_limit: 1g
+
+  # =========================
+  # FACEWAPP WORKER
+  # =========================
+  facewapp-worker:
+    container_name: facewapp-worker-v2
+    build: .
+    command: php /var/www/html/worker.php
+    volumes:
+      - /mnt/satahdd1/disk1/facewapp:/var/www/html
+    networks:
+      - db-network
+    restart: always
+    cpus: 2.0
+    mem_limit: 2g
+
+  # =========================
+  # FACE SWAP MODEL (ADDED INTO SAME NETWORK)
+  # =========================
+  face-swap-model:
+    image: r8.im/codeplugtech/face-swap@sha256:278a81e7ebb22db98bcba54de985d22cc1abeead2754eb1f2af717247be69b34
+    container_name: face-swap-model-v2
+    networks:
+      - db-network
+    restart: unless-stopped
+
+# =========================
+# SHARED NETWORK (PRIMARY BUS)
+# =========================
+networks:
+  db-network:
+    external: true
+    name: db-network
