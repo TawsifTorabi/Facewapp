@@ -10,11 +10,69 @@ class Auth {
   static headers() {
     const token = this.token();
 
-    return token
-      ? {
-          Authorization: "Bearer " + token,
+    return token ? { Authorization: "Bearer " + token } : {};
+  }
+
+  // =====================
+  // BOOTSTRAP SSO LOGIN
+  // =====================
+  static async bootstrapSSO() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const ssoToken = urlParams.get("token");
+
+    if (!ssoToken) return;
+
+    try {
+      const res = await fetch(`${this.api()}?action=exchange_token`, {
+        headers: {
+          Authorization: "Bearer " + ssoToken,
+        },
+      });
+
+      const data = await res.json();
+
+      if (data.token) {
+        localStorage.setItem("token", data.token);
+
+        // clean URL (important UX fix)
+        window.history.replaceState(
+          {},
+          document.title,
+          window.location.pathname,
+        );
+      }
+    } catch (err) {
+      console.error("SSO bootstrap failed:", err);
+      window.location.href = "/login.php";
+    }
+  }
+
+  // =====================
+  // SESSION REFRESH
+  // =====================
+
+  static startAutoRefresh() {
+    setInterval(async () => {
+      const token = this.token();
+      if (!token) return;
+
+      try {
+        const res = await fetch(`${this.api()}?action=refresh_token`, {
+          headers: {
+            Authorization: "Bearer " + token,
+          },
+        });
+
+        const data = await res.json();
+
+        if (data.token) {
+          localStorage.setItem("token", data.token);
+          console.log("Token refreshed");
         }
-      : {};
+      } catch (err) {
+        console.warn("Token refresh failed", err);
+      }
+    }, 300 * 1000); // every 5 Minutes refresh the Auth Token
   }
 
   // =====================
@@ -34,7 +92,7 @@ class Auth {
   }
 
   // =====================
-  // TOKEN LOGIN CHECK
+  // TOKEN CHECK (SAFE VERSION)
   // =====================
   static async checkLogin() {
     const token = this.token();
@@ -48,7 +106,14 @@ class Auth {
         headers: this.headers(),
       });
 
-      return await res.json();
+      const data = await res.json();
+
+      // 🔥 auto logout if invalid token
+      if (!data.logged_in) {
+        this.logout();
+      }
+
+      return data;
     } catch (err) {
       console.error("Check login failed:", err);
       return { logged_in: false };
@@ -60,20 +125,8 @@ class Auth {
   // =====================
   static logout() {
     localStorage.removeItem("token");
-    localStorage.removeItem("user_id"); // optional if still used elsewhere
+    localStorage.removeItem("user_id");
 
     window.location.href = "/login.php";
-  }
-
-  static headers() {
-    const token = localStorage.getItem("token");
-
-    if (!token) {
-      return {};
-    }
-
-    return {
-      Authorization: "Bearer " + token,
-    };
   }
 }

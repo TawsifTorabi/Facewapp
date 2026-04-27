@@ -37,8 +37,19 @@ SELECT
     j.status,
     j.progress,
     j.created_at,
+
     COUNT(ji.id) AS total_images,
-    SUM(CASE WHEN ji.status='completed' THEN 1 ELSE 0 END) AS done_images
+
+    SUM(CASE 
+        WHEN ji.status='completed' 
+        THEN 1 ELSE 0 
+    END) AS done_images,
+
+    SUM(CASE 
+        WHEN ji.status='failed' AND ji.retry_count >= 3
+        THEN 1 ELSE 0 
+    END) AS failed_images
+
 FROM jobs j
 LEFT JOIN job_images ji ON j.id = ji.job_id
 WHERE j.user_id = ?
@@ -56,10 +67,22 @@ $jobs = [];
 
 while ($row = $result->fetch_assoc()) {
 
-    $total = $row['total_images'] ?? 0;
-    $done  = $row['done_images'] ?? 0;
+    $total  = intval($row['total_images'] ?? 0);
+    $done   = intval($row['done_images'] ?? 0);
+    $failed = intval($row['failed_images'] ?? 0);
 
-    $row['progress'] = $total > 0 ? intval(($done / $total) * 100) : 0;
+    // =====================
+    // NEW PROGRESS LOGIC
+    // =====================
+    $processed = $done + $failed;
+
+    $row['progress'] = $total > 0
+        ? intval(($processed / $total) * 100)
+        : 0;
+
+    // normalize values
+    $row['done_images']   = $done;
+    $row['failed_images'] = $failed;
 
     $jobs[] = $row;
 }
