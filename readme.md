@@ -1,7 +1,7 @@
 
 # AI Meme Tool (FaceWapp v2)
 
-A scalable, distributed AI-powered meme generation platform. This tool uses a producer-consumer architecture to handle heavy AI image processing asynchronously, ensuring the web interface remains fast and responsive. In future I'll try to distribute the workers in different kubernetes nodes to distribute server load for faster processing.
+A scalable, distributed AI-powered meme generation platform. This tool uses a producer-consumer architecture to handle heavy AI image processing asynchronously, ensuring the web interface remains fast and responsive. In future I'll try to distribute the workers in different kubernetes nodes to distribute server load for faster processing. This tool was developped to be a experimental part as a module of my existing project "PHP-Gallery-Manager" It talks to the Authentication API of `PHP-Gallery-Manager` to authenticate users in and track records on it's own database. 
 
 I've run this application on docker on my homelab server (i3-8130U with 4GB RAM, Intel iGPU) and it was running fine.
 
