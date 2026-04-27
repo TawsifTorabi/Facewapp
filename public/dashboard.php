@@ -7,6 +7,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <link rel="icon" type="image/x-icon" href="/images/favicon.jpg">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Press+Start+2P&display=swap');
 
@@ -202,16 +203,32 @@
     <div class="container mt-4">
 
         <h3 class="fw-bold mb-1" style="
-            font-family: 'Poppins', sans-serif;
-            background: linear-gradient(90deg, #ff4d4d, #ffcc00, #4dff88);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            font-family: 'Inter', system-ui, sans-serif;
+            font-size: 1.8rem;
+            letter-spacing: -1px;
+            color: #e5e7eb;
             ">
-            Facewapp: Generate Memes, Swap Faces for Friends
+            <span style="color:#22d3ee;">F</span>
+            <span style="color:#a78bfa;">A</span>
+            <span style="color:#f472b6;">C</span>
+            <span style="color:#fbbf24;">E</span>
+            <span style="color:#34d399;">W</span>
+            <span style="color:#60a5fa;">A</span>
+            <span style="color:#fb7185;">P</span>
+            <span style="color:#c084fc;">P</span>
+
+            <span style="
+                margin-left:8px;
+                font-size:1rem;
+                color:#94a3b8;
+                font-weight:500;
+            ">
+                Studio
+            </span>
         </h3>
 
-        <div class="text-muted small mb-3">
-            Fast AI-powered face swapping for memes, fun edits, and social sharing
+        <div class="small mb-3" style="color:#94a3b8;">
+            Generate memes, swap faces, and ship viral edits in seconds.
         </div>
 
         <div id="auth-status">Checking session...</div>
