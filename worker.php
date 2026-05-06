@@ -67,17 +67,33 @@ while (true) {
     // 3. NOTHING → IDLE
     // =========================
     if ($conn->affected_rows === 0) {
-        $conn->commit();
 
+        // =========================
+        // RECOVER FAILED JOBS WHEN IDLE
+        // =========================
+        $conn->query("
+            UPDATE job_images
+            SET status='queued'
+            WHERE status='failed'
+            AND retry_count < 4
+            AND (
+                error IS NULL 
+                OR error='Invalid API response'
+            )
+            ORDER BY id ASC
+            LIMIT 5
+        ");
+
+        $conn->commit();
         $conn->query("SELECT RELEASE_LOCK('facewapp_worker_lock')");
 
         $idleCounter++;
 
         if ($idleCounter % 10 === 0) {
-            echo "[Idle] waiting...\n";
+            echo "[Idle] recovering failed jobs...\n";
         }
 
-        sleep(2);
+        sleep(3); // slightly longer idle delay
         continue;
     }
 
@@ -144,7 +160,25 @@ while (true) {
         // =========================
         // PROCESS
         // =========================
-        $output_file = callFaceSwapAPI($swapPath, $targetPath);
+        // =========================
+        // HARD STOP AFTER MAX RETRIES
+        // =========================
+        if ($retry_count >= 4) {
+            throw new Exception("Max retry limit reached");
+        }
+
+        // =========================
+        // ADAPTIVE RESIZE STRATEGY
+        // =========================
+        $processedTarget = $targetPath;
+
+        if ($retry_count >= 3) {
+            $processedTarget = resizeImage($targetPath, 500);
+        } elseif ($retry_count >= 2) {
+            $processedTarget = resizeImage($targetPath, 700);
+        }
+
+        $output_file = callFaceSwapAPI($swapPath, $processedTarget);
 
         // =========================
         // SUCCESS
@@ -158,7 +192,6 @@ while (true) {
         $stmt->execute();
 
         echo "Done image #$image_id\n";
-
     } catch (Exception $e) {
 
         $err = $e->getMessage();
@@ -166,12 +199,25 @@ while (true) {
         echo "Error #$image_id: $err\n";
 
         // increment retry count
-        $stmt = $conn->prepare("
-            UPDATE job_images 
-            SET status='failed', error=?, retry_count = retry_count + 1
-            WHERE id=?
-        ");
-        $stmt->bind_param("si", $err, $image_id);
+        $newRetry = $retry_count + 1;
+
+        // if already maxed, freeze it
+        if ($newRetry >= 4) {
+            $stmt = $conn->prepare("
+                UPDATE job_images 
+                SET status='failed_final', error=?, retry_count=?
+                WHERE id=?
+            ");
+            $stmt->bind_param("sii", $err, $newRetry, $image_id);
+        } else {
+            $stmt = $conn->prepare("
+                UPDATE job_images 
+                SET status='failed', error=?, retry_count=?
+                WHERE id=?
+            ");
+            $stmt->bind_param("sii", $err, $newRetry, $image_id);
+        }
+
         $stmt->execute();
     }
 
@@ -179,6 +225,11 @@ while (true) {
     // UPDATE JOB PROGRESS
     // =========================
     updateJobProgress($conn, $job_id);
+
+    // =========================
+    // SAFE PROCESS DELAY
+    // =========================
+    usleep(800000); // 0.8 sec delay between jobs
 
     // =========================
     // RELEASE LOCK
@@ -283,4 +334,42 @@ function updateJobProgress($conn, $job_id)
         SET progress=$progress, status='$status'
         WHERE id=$job_id
     ");
+}
+
+// =========================
+// IMAGE RESIZE HELPER
+// =========================
+function resizeImage($path, $maxSize)
+{
+    $info = getimagesize($path);
+    if (!$info) return $path;
+
+    [$width, $height] = $info;
+
+    if ($width <= $maxSize && $height <= $maxSize) {
+        return $path; // no resize needed
+    }
+
+    $ratio = $width / $height;
+
+    if ($ratio > 1) {
+        $newW = $maxSize;
+        $newH = intval($maxSize / $ratio);
+    } else {
+        $newH = $maxSize;
+        $newW = intval($maxSize * $ratio);
+    }
+
+    $src = imagecreatefromstring(file_get_contents($path));
+    $dst = imagecreatetruecolor($newW, $newH);
+
+    imagecopyresampled($dst, $src, 0, 0, 0, 0, $newW, $newH, $width, $height);
+
+    $newPath = $path . "_resized.jpg";
+    imagejpeg($dst, $newPath, 90);
+
+    imagedestroy($src);
+    imagedestroy($dst);
+
+    return $newPath;
 }
