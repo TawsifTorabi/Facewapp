@@ -229,7 +229,7 @@ while (true) {
     // =========================
     // SAFE PROCESS DELAY
     // =========================
-    usleep(800000); // 0.8 sec delay between jobs
+    usleep(10000000); // 10 sec delay between jobs
 
     // =========================
     // RELEASE LOCK
